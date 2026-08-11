@@ -6,7 +6,7 @@ export function renderSetup(root) {
   root.innerHTML = `
     <div class="hub-shell">
       <header class="hub-hero">
-        <p class="brand-mark">Brief</p>
+        <p class="brand-mark">Brief Design</p>
         <p class="brand-sub">брифы</p>
         <h1>Подключите бесплатный Supabase</h1>
         <p class="hub-lead">
@@ -28,7 +28,7 @@ export function renderLogin(root, { onSubmit, error = "" }) {
   root.innerHTML = `
     <div class="hub-shell narrow">
       <header class="hub-hero">
-        <p class="brand-mark">Brief</p>
+        <p class="brand-mark">Brief Design</p>
         <p class="brand-sub">общий список</p>
         <h1>Вход</h1>
         <p class="hub-lead">
@@ -124,7 +124,7 @@ export function renderHome(root, { briefs, query, onSearch, onCreate, onSignOut,
     <div class="hub-shell">
       <header class="hub-top">
         <div>
-          <p class="brand-mark small">Brief</p>
+          <p class="brand-mark small">Brief Design</p>
           <h1>Все брифы</h1>
           <p class="hub-hint">${
             cloudMode

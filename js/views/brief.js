@@ -162,7 +162,7 @@ export async function renderBrief(root, { brief }) {
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-top">
           <div class="brand">
-            <button type="button" class="brand-link" id="backProject">${escapeHtml(projectTitle || "Brief")}</button>
+            <button type="button" class="brand-link" id="backProject">${escapeHtml(projectTitle || "Brief Design")}</button>
             <p class="brand-sub">${escapeHtml(briefSubtitle)}</p>
           </div>
           <button type="button" class="btn ghost sidebar-close" id="sidebarClose" aria-label="Закрыть">×</button>
