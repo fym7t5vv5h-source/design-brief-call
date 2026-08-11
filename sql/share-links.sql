@@ -32,8 +32,8 @@ begin
     raise exception 'Бриф не найден';
   end if;
 
-  if v_token is null or length(v_token) < 16 then
-    v_token := encode(gen_random_bytes(18), 'hex');
+  if v_token is null or length(v_token) < 8 or length(v_token) > 16 then
+    v_token := substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
   end if;
 
   update public.briefs
@@ -77,7 +77,7 @@ declare
   v_notes jsonb;
   v_refs jsonb;
 begin
-  if p_token is null or length(trim(p_token)) < 16 then
+  if p_token is null or length(trim(p_token)) < 8 then
     raise exception 'Ссылка недействительна';
   end if;
 
