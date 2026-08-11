@@ -12,9 +12,30 @@ import {
   uploadImage,
   updateProject,
   clearBriefAnswers,
-} from "../supabase.js";
+} from "../store.js";
 import { debounce, escapeHtml, openLightbox, wireLightboxOnce, compressImageFile, filesFromClipboard } from "../utils.js";
 import { refImageSrc, isDisplayableImageUrl } from "../pinterest.js";
+import {
+  filterVisibleSections,
+  resolveObjectType,
+  objectTypeLabel,
+  visibleQuestions,
+  isQuestionVisible,
+} from "../branching.js";
+
+const SHARED_FLAGS = [
+  { qid: "dw11", field: "flag_loggia" },
+];
+
+function seedSharedAnswers(answers, brief) {
+  for (const { qid, field } of SHARED_FLAGS) {
+    const fromProject = brief.projects?.[field];
+    if (fromProject && !answers[qid]?.choice) {
+      answers[qid] = { choice: fromProject, text: "", choices: [] };
+    }
+  }
+  return answers;
+}
 
 function sectionsFor(type) {
   return type === "planning" ? planningSections : designSections;
@@ -32,18 +53,21 @@ function isAnswered(payload = {}, photoCount = 0) {
   return false;
 }
 
-function buildMarkdown(brief, sections, answers, notes, refs = []) {
+function buildMarkdown(brief, allSections, answers, notes, refs = []) {
   const client = brief.projects?.clients?.name || "—";
   const project = brief.projects?.title || "—";
   const typeLabel = brief.type === "planning" ? "Планировка / ТЗ" : "Дизайн";
+  const objectType = resolveObjectType(answers, brief);
   const lines = [
     `# Бриф: ${typeLabel}`,
     "",
     `- **Клиент:** ${client}`,
     `- **Объект:** ${project}`,
+    ...(objectType ? [`- **Тип объекта:** ${objectType}`] : []),
     `- **Дата:** ${new Date().toLocaleDateString("ru-RU")}`,
     "",
   ];
+  const sections = filterVisibleSections(allSections, answers, brief);
   for (const section of sections) {
     lines.push(`## ${section.title}`);
     lines.push("");
@@ -51,6 +75,7 @@ function buildMarkdown(brief, sections, answers, notes, refs = []) {
       lines.push(`> ${notes[section.id].trim()}`, "");
     }
     section.questions.forEach((q, i) => {
+      if (!isQuestionVisible(q, answers, brief)) return;
       const a = answers[q.id];
       const photoCount = refs.filter((r) => r.section_id === questionRefKey(q.id)).length;
       if ((!a || !isAnswered(a)) && !photoCount) return;
@@ -68,15 +93,29 @@ function buildMarkdown(brief, sections, answers, notes, refs = []) {
 
 export async function renderBrief(root, { brief }) {
   wireLightboxOnce();
-  const sections = sectionsFor(brief.type);
+  const allSections = sectionsFor(brief.type);
   let sectionIndex = 0;
   /** @type {Record<string, any>} */
-  let answers = await loadAnswers(brief.id);
+  let answers = seedSharedAnswers(await loadAnswers(brief.id), brief);
   /** @type {Record<string, string>} */
   let notes = await loadSectionNotes(brief.id);
   /** @type {any[]} */
   let allRefs = await loadRefs(brief.id, "*");
   let menuOpen = false;
+
+  function getSections() {
+    return filterVisibleSections(allSections, answers, brief);
+  }
+
+  function clampSectionIndex() {
+    const list = getSections();
+    if (!list.length) {
+      sectionIndex = 0;
+      return;
+    }
+    if (sectionIndex >= list.length) sectionIndex = list.length - 1;
+    if (sectionIndex < 0) sectionIndex = 0;
+  }
 
   function refsForQuestion(qid) {
     return allRefs.filter((r) => r.section_id === questionRefKey(qid));
@@ -93,6 +132,15 @@ export async function renderBrief(root, { brief }) {
   const saveAnswer = debounce(async (qid, payload) => {
     answers[qid] = payload;
     await upsertAnswer(brief.id, qid, payload);
+    const shared = SHARED_FLAGS.find((s) => s.qid === qid);
+    if (shared && payload.choice != null) {
+      try {
+        await updateProject(brief.project_id, { [shared.field]: payload.choice || "" });
+        if (brief.projects) brief.projects[shared.field] = payload.choice || "";
+      } catch {
+        /* optional project columns */
+      }
+    }
     updateProgress();
     renderNav();
   }, 350);
@@ -104,7 +152,9 @@ export async function renderBrief(root, { brief }) {
 
   const clientName = brief.projects?.clients?.name || "";
   const projectTitle = brief.projects?.title || "";
+  const objectLabel = objectTypeLabel(resolveObjectType({}, brief));
   const typeLabel = brief.type === "planning" ? "Планировка / ТЗ" : "Дизайн";
+  const briefSubtitle = objectLabel ? `${objectLabel} · ${typeLabel}` : typeLabel;
 
   root.innerHTML = `
     <div class="app brief-app">
@@ -113,7 +163,7 @@ export async function renderBrief(root, { brief }) {
         <div class="sidebar-top">
           <div class="brand">
             <button type="button" class="brand-link" id="backProject">${escapeHtml(projectTitle || "Brief")}</button>
-            <p class="brand-sub">${escapeHtml(typeLabel)}</p>
+            <p class="brand-sub">${escapeHtml(briefSubtitle)}</p>
           </div>
           <button type="button" class="btn ghost sidebar-close" id="sidebarClose" aria-label="Закрыть">×</button>
         </div>
@@ -296,18 +346,21 @@ export async function renderBrief(root, { brief }) {
   }
 
   function current() {
-    return sections[sectionIndex];
+    clampSectionIndex();
+    const list = getSections();
+    return list[sectionIndex] || list[0] || allSections[0];
   }
 
   function sectionProgress(section) {
-    const answered = section.questions.filter((q) => questionAnswered(q.id)).length;
-    return { answered, total: section.questions.length };
+    const qs = visibleQuestions(section, answers, brief).filter((q) => q.id !== "el0");
+    const answered = qs.filter((q) => questionAnswered(q.id)).length;
+    return { answered, total: qs.length };
   }
 
   function updateProgress() {
     let answered = 0;
     let total = 0;
-    for (const s of sections) {
+    for (const s of getSections()) {
       const p = sectionProgress(s);
       answered += p.answered;
       total += p.total;
@@ -320,7 +373,8 @@ export async function renderBrief(root, { brief }) {
   function renderNav() {
     els.sectionNav.innerHTML = "";
     let lastGroup = null;
-    sections.forEach((section, index) => {
+    const list = getSections();
+    list.forEach((section, index) => {
       if (section.group !== lastGroup) {
         lastGroup = section.group;
         const title = document.createElement("p");
@@ -355,12 +409,13 @@ export async function renderBrief(root, { brief }) {
 
   function renderQuestions() {
     const section = current();
-    els.sectionEyebrow.textContent = `${section.group} · раздел ${sectionIndex + 1} из ${sections.length}`;
+    const list = getSections();
+    els.sectionEyebrow.textContent = `${section.group} · раздел ${sectionIndex + 1} из ${list.length}`;
     els.sectionTitle.textContent = section.title;
     els.sectionNotes.value = notes[section.id] || "";
 
     const atStart = sectionIndex === 0;
-    const atEnd = sectionIndex === sections.length - 1;
+    const atEnd = sectionIndex === list.length - 1;
     const nextLabel = atEnd ? "Экспорт" : "Далее →";
     [els.prevBtn, els.prevBtnMobile].forEach((b) => {
       b.disabled = atStart;
@@ -370,7 +425,8 @@ export async function renderBrief(root, { brief }) {
     });
 
     els.questionsPane.innerHTML = "";
-    section.questions.forEach((question, index) => {
+    const questions = visibleQuestions(section, answers, brief);
+    questions.forEach((question, index) => {
       if (question.id === "el0") {
         const note = document.createElement("div");
         note.className = "question-card hint-card";
@@ -484,6 +540,17 @@ export async function renderBrief(root, { brief }) {
             payload.choice = payload.choice === value ? "" : value;
           }
           saveAnswer(question.id, { ...payload });
+          // Branching answers change visible sections / questions
+          if (
+            question.id === "dw11" ||
+            question.id === "od1" ||
+            question.id === "hs1" ||
+            question.id === "hs5"
+          ) {
+            clampSectionIndex();
+            paint();
+            return;
+          }
           renderQuestions();
           renderNav();
           updateProgress();
@@ -591,7 +658,7 @@ export async function renderBrief(root, { brief }) {
   }
 
   function openExport() {
-    const md = buildMarkdown(brief, sections, answers, notes, allRefs);
+    const md = buildMarkdown(brief, allSections, answers, notes, allRefs);
     const modal = document.getElementById("exportModal");
     const preview = document.getElementById("exportPreview");
     preview.textContent = md;
@@ -617,7 +684,7 @@ export async function renderBrief(root, { brief }) {
     }
   });
   root.querySelector("#nextBtn").addEventListener("click", () => {
-    if (sectionIndex < sections.length - 1) {
+    if (sectionIndex < getSections().length - 1) {
       sectionIndex += 1;
       paint();
     } else openExport();
@@ -629,7 +696,7 @@ export async function renderBrief(root, { brief }) {
     }
   });
   root.querySelector("#nextBtnMobile").addEventListener("click", () => {
-    if (sectionIndex < sections.length - 1) {
+    if (sectionIndex < getSections().length - 1) {
       sectionIndex += 1;
       paint();
     } else openExport();

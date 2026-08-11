@@ -1,5 +1,6 @@
 import { navigate } from "../router.js";
 import { escapeHtml, formatDate } from "../utils.js";
+import { objectTypeLabel } from "../branching.js";
 
 export function renderClientPage(root, { client, onSaveNotes, onAddProject, onDelete }) {
   const projects = client.projects || [];
@@ -31,11 +32,13 @@ export function renderClientPage(root, { client, onSaveNotes, onAddProject, onDe
                   const briefs = p.briefs || [];
                   const planning = briefs.find((b) => b.type === "planning");
                   const design = briefs.find((b) => b.type === "design");
+                  const typeBadge = objectTypeLabel(p.object_type);
                   return `
                   <button type="button" class="project-card" data-id="${p.id}">
                     <div>
                       <h3>${escapeHtml(p.title)}</h3>
                       <p class="meta">
+                        ${typeBadge ? `${escapeHtml(typeBadge)} · ` : ""}
                         Планировка: ${planning ? formatDate(planning.updated_at) : "—"}
                         · Дизайн: ${design ? formatDate(design.updated_at) : "—"}
                       </p>
@@ -44,7 +47,7 @@ export function renderClientPage(root, { client, onSaveNotes, onAddProject, onDe
                   </button>`;
                 })
                 .join("")
-            : `<p class="empty-state">Добавьте объект (ЖК / адрес)</p>`
+            : `<p class="empty-state">Добавьте объект — сначала выберите квартиру или дом</p>`
         }
       </div>
     </div>
@@ -65,13 +68,24 @@ export function renderProjectPage(root, { project, onSaveBoard, onOpenBrief }) {
   const planning = briefs.find((b) => b.type === "planning");
   const design = briefs.find((b) => b.type === "design");
   const clientName = project.clients?.name || "";
+  const objectLabel = objectTypeLabel(project.object_type);
+  const isHouse = project.object_type === "Загородный дом";
+  const isApt = project.object_type === "Квартира";
+  const planningHint = isHouse
+    ? "ТЗ · ветка дома · техника · электрика"
+    : isApt
+      ? "ТЗ · лоджия · техника · электрика"
+      : "Общее · планировка · хранение · ТЗ · электрика";
+  const designHint = isHouse
+    ? "Дизайн · помещения · котельная"
+    : "Дизайн · двери · отделка · помещения";
 
   root.innerHTML = `
     <div class="hub-shell">
       <header class="hub-top">
         <div>
           <button type="button" class="btn ghost back-link" id="backClient">← Все брифы</button>
-          <p class="eyebrow">${escapeHtml(clientName)}</p>
+          <p class="eyebrow">${escapeHtml(clientName)}${objectLabel ? ` · ${escapeHtml(objectLabel)}` : ""}</p>
           <h1>${escapeHtml(project.title)}</h1>
         </div>
       </header>
@@ -89,15 +103,15 @@ export function renderProjectPage(root, { project, onSaveBoard, onOpenBrief }) {
 
       <div class="brief-cards">
         <button type="button" class="brief-card" data-type="planning" ${planning ? `data-id="${planning.id}"` : "disabled"}>
-          <p class="eyebrow">Созвон 1</p>
+          <p class="eyebrow">Созвон 1 · ${escapeHtml(objectLabel || "объект")}</p>
           <h2>Планировка / ТЗ</h2>
-          <p>Общее · планировка · электрика и инженерия</p>
+          <p>${escapeHtml(planningHint)}</p>
           <p class="meta">Обновлено: ${planning ? formatDate(planning.updated_at) : "—"}</p>
         </button>
         <button type="button" class="brief-card" data-type="design" ${design ? `data-id="${design.id}"` : "disabled"}>
-          <p class="eyebrow">Созвон 2</p>
+          <p class="eyebrow">Созвон 2 · ${escapeHtml(objectLabel || "объект")}</p>
           <h2>Дизайн</h2>
-          <p>Стиль · материалы · помещения</p>
+          <p>${escapeHtml(designHint)}</p>
           <p class="meta">Обновлено: ${design ? formatDate(design.updated_at) : "—"}</p>
         </button>
       </div>

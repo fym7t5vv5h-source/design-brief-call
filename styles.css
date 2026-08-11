@@ -729,6 +729,76 @@ textarea,
   padding: 24px;
 }
 
+.create-brief-card {
+  width: min(520px, 100%);
+  max-height: min(90vh, 720px);
+  overflow: auto;
+}
+
+.create-brief-form {
+  display: grid;
+  gap: 14px;
+  padding: 0 22px 22px;
+}
+
+.create-step-label {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.create-fixed-client {
+  margin: 0;
+  opacity: 0.8;
+}
+
+.object-type-pick {
+  display: grid;
+  gap: 10px;
+}
+
+.object-type-option {
+  display: block;
+  cursor: pointer;
+}
+
+.object-type-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.object-type-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(20, 30, 24, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.object-type-card strong {
+  font-size: 1.05rem;
+}
+
+.object-type-card span {
+  font-size: 0.9rem;
+  line-height: 1.35;
+  opacity: 0.7;
+}
+
+.object-type-option input:checked + .object-type-card {
+  border-color: rgba(40, 90, 60, 0.55);
+  background: rgba(90, 140, 100, 0.12);
+}
+
+.object-type-option:hover .object-type-card {
+  border-color: rgba(40, 90, 60, 0.35);
+}
+
 .lightbox[hidden],
 .modal[hidden] {
   display: none;
@@ -1444,6 +1514,45 @@ textarea,
   .mobile-bar .menu-btn-bar {
     width: auto;
     white-space: nowrap;
+  }
+
+  .nav-group {
+    margin: 16px 8px 8px;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    line-height: 1.35;
+    color: rgba(155, 176, 159, 0.95);
+  }
+
+  .create-brief-card {
+    width: 100%;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .create-brief-form {
+    padding: 0 16px 16px;
+  }
+
+  .object-type-card {
+    padding: 16px;
+    min-height: 64px;
+  }
+
+  .hub-top {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .hub-top-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 8px;
+  }
+
+  .hub-top-actions .btn {
+    min-height: 44px;
   }
 
   .lightbox,

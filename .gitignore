@@ -1,0 +1,5 @@
+.tmp-inventory/
+.DS_Store
+*.log
+.env
+.env.*

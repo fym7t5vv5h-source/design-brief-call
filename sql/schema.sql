@@ -16,9 +16,20 @@ create table if not exists public.projects (
   client_id uuid not null references public.clients(id) on delete cascade,
   title text not null,
   pinterest_board_url text default '',
+  object_type text default '',
+  flag_children text default '',
+  flag_guest text default '',
+  flag_wardrobe text default '',
+  flag_loggia text default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.projects add column if not exists object_type text default '';
+alter table public.projects add column if not exists flag_children text default '';
+alter table public.projects add column if not exists flag_guest text default '';
+alter table public.projects add column if not exists flag_wardrobe text default '';
+alter table public.projects add column if not exists flag_loggia text default '';
 
 create table if not exists public.briefs (
   id uuid primary key default gen_random_uuid(),

@@ -1,8 +1,7 @@
 import {
   isConfigured,
-  isLocalMode,
-  getSession,
-  signIn,
+  getCloudSession,
+  signInOrRegister,
   signOut,
   listBriefs,
   createClient,
@@ -13,11 +12,11 @@ import {
   getProject,
   updateProject,
   getBrief,
-  exportLocalBackup,
-  importLocalBackup,
-} from "./supabase.js";
+  migrateLocalToCloud,
+  localClientCount,
+} from "./store.js";
 import { onRoute, startRouter, navigate } from "./router.js";
-import { renderSetup, renderLogin, renderHome } from "./views/hub.js";
+import { renderLogin, renderHome, openCreateBriefDialog } from "./views/hub.js";
 import { renderClientPage, renderProjectPage } from "./views/client-project.js";
 import { renderBrief } from "./views/brief.js";
 import { wireLightboxOnce } from "./utils.js";
@@ -31,132 +30,113 @@ function loading(msg = "Загрузка…") {
 }
 
 function showError(err) {
-  root.innerHTML = `<div class="hub-shell"><p class="form-error">${err.message || err}</p><button class="btn ghost" id="retry">Назад</button></div>`;
+  root.innerHTML = `<div class="hub-shell"><p class="form-error">${err.message || err}</p>
+    <button class="btn ghost" id="retry">На главную</button></div>`;
   root.querySelector("#retry")?.addEventListener("click", () => navigate("/"));
 }
 
-async function requireAuth(route) {
-  if (isLocalMode()) return { user: { id: "local" } };
+async function afterAuthSuccess() {
+  const localN = localClientCount();
+  if (localN > 0) {
+    loading("Сохраняем клиентов в облако…");
+    try {
+      await migrateLocalToCloud();
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+  navigate("/");
+  await handleRoute({ name: "home", params: {} });
+}
+
+function paintLogin(error = "") {
+  renderLogin(root, {
+    error,
+    onSubmit: async (email, password) => {
+      try {
+        loading("Входим…");
+        await signInOrRegister(email, password);
+        await afterAuthSuccess();
+      } catch (err) {
+        paintLogin(err.message || "Не удалось войти");
+      }
+    },
+  });
+}
+
+/** Only a real Supabase session counts — never the local fake user. */
+async function requireCloudSession(route) {
   if (!isConfigured()) {
-    navigate("/setup");
+    root.innerHTML = `<div class="hub-shell"><p class="form-error">Облако не настроено (нет ключей в config.js).</p></div>`;
     return null;
   }
-  const session = await getSession();
-  if (!session) {
+
+  let session = null;
+  try {
+    session = await getCloudSession();
+  } catch (err) {
     if (route.name !== "login") navigate("/login");
+    paintLogin(err.message || "Нет связи с облаком");
     return null;
   }
-  return session;
-}
 
-function downloadBackup() {
-  const blob = new Blob([exportLocalBackup()], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `brief-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+  if (session?.user?.id && session.user.id !== "local") {
+    return session;
+  }
 
-function importBackupFile() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "application/json,.json";
-  input.onchange = async () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    if (!confirm("Импорт заменит текущие локальные данные. Продолжить?")) return;
-    importLocalBackup(text);
-    navigate("/");
-    handleRoute({ name: "home", params: {} });
-  };
-  input.click();
+  if (route.name !== "login") navigate("/login");
+  paintLogin();
+  return null;
 }
 
 async function createNewBriefFlow() {
-  const clientName = prompt("Имя клиента");
-  if (!clientName?.trim()) return;
-  const objectTitle = prompt("Объект (ЖК / адрес)");
-  if (!objectTitle?.trim()) return;
-  const client = await createClient(clientName.trim());
-  const project = await createProject(client.id, objectTitle.trim());
+  const draft = await openCreateBriefDialog();
+  if (!draft) return;
+  const clientRow = await createClient(draft.clientName);
+  const project = await createProject(clientRow.id, draft.objectTitle, draft.objectType);
   navigate(`/project/${project.id}`);
 }
 
 async function handleRoute(route) {
   wireLightboxOnce();
 
-  if (isLocalMode()) {
-    if (route.name === "setup" || route.name === "login") {
-      navigate("/");
-      return;
-    }
-  } else {
-    if (!isConfigured()) {
-      if (route.name !== "setup") {
-        navigate("/setup");
-        return;
-      }
-      renderSetup(root);
-      return;
-    }
-    if (route.name === "setup") {
-      navigate("/");
-      return;
-    }
-    if (route.name === "login") {
-      const session = await getSession();
-      if (session) {
-        navigate("/");
-        return;
-      }
-      renderLogin(root, {
-        onSubmit: async (email, password) => {
-          try {
-            await signIn(email, password);
-            navigate("/");
-          } catch (err) {
-            renderLogin(root, {
-              error: err.message || "Ошибка входа",
-              onSubmit: async (e, p) => {
-                await signIn(e, p);
-                navigate("/");
-              },
-            });
-          }
-        },
-      });
-      return;
-    }
+  if (route.name === "setup") {
+    navigate("/login");
+    route = { name: "login", params: {} };
   }
 
-  const session = await requireAuth(route);
+  const session = await requireCloudSession(route);
   if (!session) return;
 
   try {
+    if (route.name === "login") {
+      navigate("/");
+      route = { name: "home", params: {} };
+    }
+
     if (route.name === "home") {
       loading();
       briefsCache = await listBriefs();
-      const paint = () =>
-        renderHome(root, {
-          briefs: briefsCache,
-          query: searchQuery,
-          localMode: isLocalMode(),
-          onSearch: (q) => {
-            searchQuery = q;
-            // list refresh happens inside renderHome input handler — no full remount
-          },
-          onCreate: createNewBriefFlow,
-          onSignOut: async () => {
-            if (isLocalMode()) return;
-            await signOut();
-            navigate("/login");
-          },
-          onExportBackup: isLocalMode() ? downloadBackup : null,
-          onImportBackup: isLocalMode() ? importBackupFile : null,
-        });
-      paint();
+      renderHome(root, {
+        briefs: briefsCache,
+        query: searchQuery,
+        cloudMode: true,
+        onSearch: (q) => {
+          searchQuery = q;
+        },
+        onCreate: createNewBriefFlow,
+        onSignOut: async () => {
+          await signOut();
+          navigate("/login");
+          paintLogin();
+        },
+      });
+      // show who is logged in
+      const email = session.user?.email || "";
+      const hint = root.querySelector(".hub-hint");
+      if (hint && email) {
+        hint.textContent = `Вы вошли как ${email}. Клиенты в облаке — одинаково на телефоне и ноутбуке.`;
+      }
       return;
     }
 
@@ -169,9 +149,9 @@ async function handleRoute(route) {
           await updateClient(clientRow.id, { notes });
         },
         onAddProject: async () => {
-          const title = prompt("Название объекта (ЖК / адрес)");
-          if (!title?.trim()) return;
-          const project = await createProject(clientRow.id, title.trim());
+          const draft = await openCreateBriefDialog({ fixedClientName: clientRow.name });
+          if (!draft) return;
+          const project = await createProject(clientRow.id, draft.objectTitle, draft.objectType);
           navigate(`/project/${project.id}`);
         },
         onDelete: async () => {
@@ -185,13 +165,12 @@ async function handleRoute(route) {
 
     if (route.name === "project") {
       loading();
-      const project = await getProject(route.params.id);
       const paintProject = async () => {
         const refreshed = await getProject(route.params.id);
         renderProjectPage(root, {
           project: refreshed,
           onSaveBoard: async (url) => {
-            await updateProject(project.id, { pinterest_board_url: url });
+            await updateProject(refreshed.id, { pinterest_board_url: url });
             await paintProject();
           },
           onOpenBrief: (id) => navigate(`/brief/${id}`),

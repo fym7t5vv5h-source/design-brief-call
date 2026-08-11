@@ -79,6 +79,7 @@ export const localApi = {
         ...brief,
         project_id: project.id,
         project_title: project.title,
+        object_type: project.object_type || "",
         client_id: client?.id,
         client_name: client?.name || "Без имени",
       });
@@ -138,13 +139,14 @@ export const localApi = {
     save(db);
   },
 
-  async createProject(clientId, title) {
+  async createProject(clientId, title, objectType = "") {
     const db = load();
     const project = {
       id: uid(),
       client_id: clientId,
       title,
       pinterest_board_url: "",
+      object_type: objectType || "",
       created_at: now(),
       updated_at: now(),
     };
