@@ -465,12 +465,11 @@ export async function disableBriefShare(briefId) {
 export function shareFillUrl(token) {
   const origin = location.origin;
   const parts = location.pathname.split("/").filter(Boolean);
-  // Hash form always loads assets correctly (avoids blank page on /s/…).
-  // Short token keeps the link readable.
+  // Pretty path links (index.html sets <base href="/"> so assets load)
   if (parts[0] === "design-brief-call") {
-    return `${origin}/design-brief-call/#/s/${encodeURIComponent(token)}`;
+    return `${origin}/design-brief-call/s/${encodeURIComponent(token)}`;
   }
-  return `${origin}/#/s/${encodeURIComponent(token)}`;
+  return `${origin}/s/${encodeURIComponent(token)}`;
 }
 
 export async function touchBrief(id) {
