@@ -2,6 +2,14 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // So /s/… client links still load CSS/JS from the site root (not /s/)
+      (function () {
+        var parts = location.pathname.split("/").filter(Boolean);
+        var href = parts[0] === "design-brief-call" ? "/design-brief-call/" : "/";
+        document.write('<base href="' + href + '">');
+      })();
+    </script>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
@@ -42,6 +50,6 @@
       </div>
     </div>
 
-    <script type="module" src="js/app.js?v=20260811p"></script>
+    <script type="module" src="js/app.js?v=20260811q"></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
--- Pretty short share tokens + keep old long links working
--- Run once in Supabase SQL Editor → Run
+-- Fix client links: allow short tokens (10 chars)
+-- Supabase → SQL Editor → paste → Run
 
 create or replace function public.enable_brief_share(p_brief_id uuid)
 returns text
@@ -14,15 +14,10 @@ begin
     raise exception 'Нужен вход дизайнера';
   end if;
 
-  select share_token into v_token
-  from public.briefs
-  where id = p_brief_id;
-
-  if not found then
+  if not exists (select 1 from public.briefs where id = p_brief_id) then
     raise exception 'Бриф не найден';
   end if;
 
-  -- Always mint a short token so «Ссылка клиенту» is pretty
   v_token := substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
 
   update public.briefs
@@ -47,14 +42,15 @@ declare
   v_answers jsonb;
   v_notes jsonb;
   v_refs jsonb;
+  v_tok text := trim(p_token);
 begin
-  if p_token is null or length(trim(p_token)) < 8 then
+  if v_tok is null or length(v_tok) < 8 then
     raise exception 'Ссылка недействительна';
   end if;
 
   select * into v_brief
   from public.briefs
-  where share_token = trim(p_token)
+  where share_token = v_tok
     and share_enabled = true;
 
   if not found then

@@ -32,9 +32,8 @@ begin
     raise exception 'Бриф не найден';
   end if;
 
-  if v_token is null or length(v_token) < 8 or length(v_token) > 16 then
-    v_token := substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
-  end if;
+  -- Always mint a short pretty token
+  v_token := substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
 
   update public.briefs
   set share_token = v_token,

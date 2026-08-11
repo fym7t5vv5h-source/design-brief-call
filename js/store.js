@@ -465,12 +465,10 @@ export async function disableBriefShare(briefId) {
 export function shareFillUrl(token) {
   const origin = location.origin;
   const parts = location.pathname.split("/").filter(Boolean);
-  // GitHub Pages lives under /design-brief-call/
   if (parts[0] === "design-brief-call") {
-    return `${origin}/design-brief-call/s/${token}`;
+    return `${origin}/design-brief-call/s/${encodeURIComponent(token)}`;
   }
-  // Vercel / custom domain — short pretty link
-  return `${origin}/s/${token}`;
+  return `${origin}/s/${encodeURIComponent(token)}`;
 }
 
 export async function touchBrief(id) {
