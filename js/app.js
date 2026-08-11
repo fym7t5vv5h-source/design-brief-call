@@ -106,17 +106,29 @@ async function copyShareLink(briefId) {
   try {
     const token = await enableBriefShare(briefId);
     const url = shareFillUrl(token);
-    await navigator.clipboard.writeText(url);
-    alert(`Ссылка скопирована.\n\nОтправьте клиенту — заполняет без пароля, ответы приходят к вам:\n${url}`);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    } catch {
+      /* clipboard blocked — still show URL */
+    }
+    window.prompt(
+      copied
+        ? "Ссылка скопирована. Можно ещё раз скопировать отсюда:"
+        : "Скопируйте ссылку (Cmd+C) и отправьте клиенту:",
+      url
+    );
   } catch (err) {
     const msg = String(err.message || err);
-    if (/function|schema cache|does not exist|404/i.test(msg)) {
+    if (/Could not find the function|schema cache|PGRST202/i.test(msg)) {
       alert(
-        "Сначала один раз в Supabase → SQL Editor выполните файл sql/share-links.sql (Run), затем снова нажмите «Ссылка клиенту»."
+        "В этом проекте Supabase ещё нет функций для ссылок.\n\nПроверьте: в адресной строке SQL Editor должно быть\nvzxelhojewcbtsdzjypf\n\nПотом снова Run для sql/share-links.sql.\n\nДетали: " +
+          msg
       );
       return;
     }
-    alert(msg || "Не удалось создать ссылку");
+    alert("Не удалось создать ссылку:\n\n" + (msg || String(err)));
   }
 }
 
