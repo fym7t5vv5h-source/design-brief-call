@@ -115,15 +115,17 @@ async function copyShareLink(briefId) {
     }
     window.prompt(
       copied
-        ? "Ссылка скопирована. Можно ещё раз скопировать отсюда:"
+        ? "Ссылка готова (та же будет при повторном нажатии). Cmd+C если нужно:"
         : "Скопируйте ссылку (Cmd+C) и отправьте клиенту:",
       url
     );
+    // Instant proof it opens for the guest
+    window.open(url, "_blank", "noopener,noreferrer");
   } catch (err) {
     const msg = String(err.message || err);
-    if (/Could not find the function|schema cache|PGRST202/i.test(msg)) {
+    if (/share_token|column|Could not find the function|schema cache|PGRST202/i.test(msg)) {
       alert(
-        "В этом проекте Supabase ещё нет функций для ссылок.\n\nПроверьте: в адресной строке SQL Editor должно быть\nvzxelhojewcbtsdzjypf\n\nПотом снова Run для sql/share-links.sql.\n\nДетали: " +
+        "Нужен один SQL в Supabase.\n\nSQL Editor → вставьте sql/fix-client-open.sql → Run.\n\nДетали: " +
           msg
       );
       return;

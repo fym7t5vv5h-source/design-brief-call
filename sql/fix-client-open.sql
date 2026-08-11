@@ -1,34 +1,15 @@
--- Fix client links: allow short tokens (10 chars)
--- Supabase → SQL Editor → paste → Run
+-- Ensure share columns + guest open RPC (short tokens OK)
+-- Supabase SQL Editor → Run once
 
-create or replace function public.enable_brief_share(p_brief_id uuid)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_token text;
-begin
-  if auth.uid() is null then
-    raise exception 'Нужен вход дизайнера';
-  end if;
+alter table public.briefs
+  add column if not exists share_token text;
 
-  if not exists (select 1 from public.briefs where id = p_brief_id) then
-    raise exception 'Бриф не найден';
-  end if;
+alter table public.briefs
+  add column if not exists share_enabled boolean not null default false;
 
-  v_token := substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
-
-  update public.briefs
-  set share_token = v_token,
-      share_enabled = true,
-      updated_at = now()
-  where id = p_brief_id;
-
-  return v_token;
-end;
-$$;
+create unique index if not exists briefs_share_token_uidx
+  on public.briefs (share_token)
+  where share_token is not null;
 
 create or replace function public.get_shared_brief(p_token text)
 returns jsonb
@@ -42,16 +23,16 @@ declare
   v_answers jsonb;
   v_notes jsonb;
   v_refs jsonb;
-  v_tok text := trim(p_token);
+  v_tok text := trim(both from coalesce(p_token, ''));
 begin
-  if v_tok is null or length(v_tok) < 8 then
+  if length(v_tok) < 8 then
     raise exception 'Ссылка недействительна';
   end if;
 
   select * into v_brief
   from public.briefs
   where share_token = v_tok
-    and share_enabled = true;
+    and share_enabled is true;
 
   if not found then
     raise exception 'Ссылка отключена или не найдена';
@@ -92,5 +73,7 @@ begin
 end;
 $$;
 
-grant execute on function public.enable_brief_share(uuid) to authenticated;
 grant execute on function public.get_shared_brief(text) to anon, authenticated;
+
+-- Optional: see active links
+-- select type, share_enabled, share_token from public.briefs where share_token is not null;

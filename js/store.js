@@ -446,30 +446,80 @@ export async function loadSharedBrief(token) {
   return sharedPack;
 }
 
-/** Designer: create share link token for a brief. */
+/** Designer: create or reuse share link token for a brief. */
 export async function enableBriefShare(briefId) {
   const sb = await getSupabase();
   if (!sb) throw new Error("Облако не настроено");
-  const { data, error } = await sb.rpc("enable_brief_share", { p_brief_id: briefId });
-  if (error) throw new Error(error.message || "Не удалось создать ссылку");
-  return String(data);
+
+  // Prefer direct update (works with normal login + RLS). Keeps the same token.
+  const { data: existing, error: readErr } = await sb
+    .from("briefs")
+    .select("id, share_token, share_enabled")
+    .eq("id", briefId)
+    .maybeSingle();
+
+  if (readErr) {
+    // Columns may be missing — fall back to RPC / clear message
+    const viaRpc = await sb.rpc("enable_brief_share", { p_brief_id: briefId });
+    if (viaRpc.error) {
+      throw new Error(
+        readErr.message ||
+          viaRpc.error.message ||
+          "Нет колонок share_token. Выполните sql/fix-client-open.sql в Supabase."
+      );
+    }
+    return String(viaRpc.data);
+  }
+
+  if (!existing?.id) throw new Error("Бриф не найден");
+
+  let token = existing.share_token ? String(existing.share_token).trim() : "";
+  if (token.length < 8) {
+    token = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
+  }
+
+  const { data, error } = await sb
+    .from("briefs")
+    .update({
+      share_token: token,
+      share_enabled: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", briefId)
+    .select("share_token")
+    .single();
+
+  if (error) {
+    const viaRpc = await sb.rpc("enable_brief_share", { p_brief_id: briefId });
+    if (viaRpc.error) throw new Error(error.message || viaRpc.error.message);
+    return String(viaRpc.data);
+  }
+
+  return String(data.share_token);
 }
 
 export async function disableBriefShare(briefId) {
   const sb = await getSupabase();
   if (!sb) throw new Error("Облако не настроено");
-  const { error } = await sb.rpc("disable_brief_share", { p_brief_id: briefId });
-  if (error) throw new Error(error.message || "Не удалось отключить ссылку");
+  const { error } = await sb
+    .from("briefs")
+    .update({ share_enabled: false, updated_at: new Date().toISOString() })
+    .eq("id", briefId);
+  if (error) {
+    const viaRpc = await sb.rpc("disable_brief_share", { p_brief_id: briefId });
+    if (viaRpc.error) throw new Error(error.message || viaRpc.error.message);
+  }
 }
 
 export function shareFillUrl(token) {
   const origin = location.origin;
   const parts = location.pathname.split("/").filter(Boolean);
-  // Pretty path links (index.html sets <base href="/"> so assets load)
+  const t = encodeURIComponent(String(token).trim());
+  // Pretty path; hash form also works as fallback for the client
   if (parts[0] === "design-brief-call") {
-    return `${origin}/design-brief-call/s/${encodeURIComponent(token)}`;
+    return `${origin}/design-brief-call/s/${t}`;
   }
-  return `${origin}/s/${encodeURIComponent(token)}`;
+  return `${origin}/s/${t}`;
 }
 
 export async function touchBrief(id) {
