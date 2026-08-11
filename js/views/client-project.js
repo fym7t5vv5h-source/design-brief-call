@@ -63,7 +63,7 @@ export function renderClientPage(root, { client, onSaveNotes, onAddProject, onDe
   });
 }
 
-export function renderProjectPage(root, { project, onSaveBoard, onOpenBrief }) {
+export function renderProjectPage(root, { project, onSaveBoard, onOpenBrief, onShareBrief, onDisableShare }) {
   const briefs = project.briefs || [];
   const planning = briefs.find((b) => b.type === "planning");
   const design = briefs.find((b) => b.type === "design");
@@ -79,6 +79,23 @@ export function renderProjectPage(root, { project, onSaveBoard, onOpenBrief }) {
   const designHint = isHouse
     ? "Дизайн · помещения · котельная"
     : "Дизайн · двери · отделка · помещения";
+
+  function shareBlock(brief) {
+    if (!brief) return "";
+    const active = brief.share_enabled && brief.share_token;
+    return `
+      <div class="share-row">
+        <button type="button" class="btn ghost share-btn" data-share="${brief.id}">
+          ${active ? "Скопировать ссылку клиенту" : "Ссылка клиенту"}
+        </button>
+        ${
+          active
+            ? `<button type="button" class="btn ghost danger subtle" data-unshare="${brief.id}">Отключить</button>`
+            : ""
+        }
+      </div>
+      ${active ? `<p class="share-hint">Клиент заполняет без пароля · ответы в вашем облаке</p>` : ""}`;
+  }
 
   root.innerHTML = `
     <div class="hub-shell">
@@ -102,18 +119,24 @@ export function renderProjectPage(root, { project, onSaveBoard, onOpenBrief }) {
       </section>
 
       <div class="brief-cards">
-        <button type="button" class="brief-card" data-type="planning" ${planning ? `data-id="${planning.id}"` : "disabled"}>
-          <p class="eyebrow">Созвон 1 · ${escapeHtml(objectLabel || "объект")}</p>
-          <h2>Планировка / ТЗ</h2>
-          <p>${escapeHtml(planningHint)}</p>
-          <p class="meta">Обновлено: ${planning ? formatDate(planning.updated_at) : "—"}</p>
-        </button>
-        <button type="button" class="brief-card" data-type="design" ${design ? `data-id="${design.id}"` : "disabled"}>
-          <p class="eyebrow">Созвон 2 · ${escapeHtml(objectLabel || "объект")}</p>
-          <h2>Дизайн</h2>
-          <p>${escapeHtml(designHint)}</p>
-          <p class="meta">Обновлено: ${design ? formatDate(design.updated_at) : "—"}</p>
-        </button>
+        <div class="brief-card-wrap">
+          <button type="button" class="brief-card" data-type="planning" ${planning ? `data-id="${planning.id}"` : "disabled"}>
+            <p class="eyebrow">Созвон 1 · ${escapeHtml(objectLabel || "объект")}</p>
+            <h2>Планировка / ТЗ</h2>
+            <p>${escapeHtml(planningHint)}</p>
+            <p class="meta">Обновлено: ${planning ? formatDate(planning.updated_at) : "—"}</p>
+          </button>
+          ${shareBlock(planning)}
+        </div>
+        <div class="brief-card-wrap">
+          <button type="button" class="brief-card" data-type="design" ${design ? `data-id="${design.id}"` : "disabled"}>
+            <p class="eyebrow">Созвон 2 · ${escapeHtml(objectLabel || "объект")}</p>
+            <h2>Дизайн</h2>
+            <p>${escapeHtml(designHint)}</p>
+            <p class="meta">Обновлено: ${design ? formatDate(design.updated_at) : "—"}</p>
+          </button>
+          ${shareBlock(design)}
+        </div>
       </div>
     </div>
   `;
@@ -128,6 +151,18 @@ export function renderProjectPage(root, { project, onSaveBoard, onOpenBrief }) {
   root.querySelectorAll(".brief-card").forEach((card) => {
     card.addEventListener("click", () => {
       if (card.dataset.id) onOpenBrief(card.dataset.id);
+    });
+  });
+  root.querySelectorAll("[data-share]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onShareBrief?.(btn.dataset.share);
+    });
+  });
+  root.querySelectorAll("[data-unshare]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onDisableShare?.(btn.dataset.unshare);
     });
   });
 }

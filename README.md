@@ -2,46 +2,28 @@
 
 Один список клиентов в облаке: телефон и ноутбук — один вход.
 
-## Открыть с телефона (сейчас, та же Wi‑Fi)
+## Ссылка сайта
 
-1. На компьютере должен работать сервер.
-2. Компьютер и телефон в **одной Wi‑Fi**.
-3. На телефоне в Safari/Chrome откройте:
+После переименования репозитория в `design-brief`:
 
 ```text
-http://192.168.0.168:5173/
+https://fym7t5vv5h-source.github.io/design-brief/
 ```
 
-4. Войдите тем же **email и паролем**, что на ноутбуке.
+(Пока репозиторий называется `design-brief-call` — работает ссылка с `-call`.)
 
-Если не открывается: на Mac → Системные настройки → Сеть → Wi‑Fi — проверьте IP (иногда меняется). Подставьте актуальный вместо `192.168.0.168`.
+## Открыть с телефона
 
-Запуск сервера, если остановился:
+1. Откройте ссылку в Safari/Chrome
+2. Войдите тем же **email и паролем**, что на ноутбуке
 
-```bash
-cd design-brief-call
-python3 -m http.server 5173
-```
+## Обновления через GitHub Desktop
 
-## Постоянная ссылка (интернет, не только домашний Wi‑Fi)
+Commit → Push origin → через 1–2 минуты сайт обновится. Клиенты в облаке не пропадают.
 
-### Netlify Drop (быстро)
-
-1. [https://app.netlify.com/drop](https://app.netlify.com/drop)
-2. Перетащите папку `design-brief-call`
-3. Откройте выданную ссылку на телефоне
-4. Supabase → Authentication → URL Configuration → добавьте эту ссылку в Site URL и Redirect URLs
-
-### GitHub Pages
-
-1. Загрузите проект в GitHub
-2. Settings → Pages → Deploy from branch `main` / root
-3. Откройте `https://ВАШ_НИК.github.io/design-brief-call/`
-4. Ту же ссылку добавьте в Supabase URL Configuration
-
-## Облако
-
-Клиенты в Supabase. Один email/пароль везде.
+## Облако (Supabase)
 
 Если ошибка про `object_type` — SQL Editor → Run [`sql/fix-object-type.sql`](sql/fix-object-type.sql).  
 Полная схема: [`sql/schema.sql`](sql/schema.sql).
+
+После смены ссылки добавьте новый URL в Supabase → Authentication → URL Configuration.

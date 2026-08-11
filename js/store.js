@@ -2,6 +2,28 @@ import { config } from "./config.js";
 import { localApi } from "./local-db.js";
 
 let client = null;
+/** When set, reads/writes go through share RPCs (client fill link, no login). */
+let shareToken = null;
+/** @type {null | { brief: any, answers: Record<string, any>, notes: Record<string, string>, refs: any[] }} */
+let sharedPack = null;
+
+export function setShareToken(token) {
+  shareToken = token ? String(token).trim() : null;
+  sharedPack = null;
+}
+
+export function getShareToken() {
+  return shareToken;
+}
+
+export function clearShareToken() {
+  shareToken = null;
+  sharedPack = null;
+}
+
+export function isShareMode() {
+  return Boolean(shareToken);
+}
 
 export function isConfigured() {
   return Boolean(config.supabaseUrl && config.supabaseAnonKey);
@@ -362,6 +384,18 @@ export async function getProject(id) {
 }
 
 export async function updateProject(id, patch) {
+  if (shareToken) {
+    const sb = await getSupabase();
+    const { error } = await sb.rpc("update_shared_project", {
+      p_token: shareToken,
+      p_patch: patch,
+    });
+    if (error) throw error;
+    if (sharedPack?.brief?.projects) {
+      sharedPack.brief.projects = { ...sharedPack.brief.projects, ...patch };
+    }
+    return sharedPack?.brief?.projects || patch;
+  }
   if (await useLocal()) return localApi.updateProject(id, patch);
   const sb = await getSupabase();
   const { data, error } = await sb.from("projects").update(patch).eq("id", id).select().single();
@@ -370,6 +404,7 @@ export async function updateProject(id, patch) {
 }
 
 export async function getBrief(id) {
+  if (shareToken && sharedPack?.brief?.id === id) return sharedPack.brief;
   if (await useLocal()) return localApi.getBrief(id);
   const sb = await getSupabase();
   const { data, error } = await sb
@@ -381,6 +416,57 @@ export async function getBrief(id) {
   return data;
 }
 
+function normalizeSharedPack(raw) {
+  const notesIn = raw?.notes || {};
+  /** @type {Record<string, string>} */
+  const notes = {};
+  for (const [k, v] of Object.entries(notesIn)) {
+    notes[k] = typeof v === "string" ? v : v == null ? "" : String(v);
+  }
+  return {
+    brief: raw.brief,
+    answers: raw.answers || {},
+    notes,
+    refs: Array.isArray(raw.refs) ? raw.refs : [],
+  };
+}
+
+/** Load brief + answers for a client fill link (anon). */
+export async function loadSharedBrief(token) {
+  const sb = await getSupabase();
+  if (!sb) throw new Error("Облако не настроено");
+  const { data, error } = await withTimeout(
+    sb.rpc("get_shared_brief", { p_token: String(token).trim() }),
+    15000,
+    "Сеть: ссылка не ответила"
+  );
+  if (error) throw new Error(error.message || "Ссылка недействительна");
+  sharedPack = normalizeSharedPack(data);
+  shareToken = String(token).trim();
+  return sharedPack;
+}
+
+/** Designer: create share link token for a brief. */
+export async function enableBriefShare(briefId) {
+  const sb = await getSupabase();
+  if (!sb) throw new Error("Облако не настроено");
+  const { data, error } = await sb.rpc("enable_brief_share", { p_brief_id: briefId });
+  if (error) throw new Error(error.message || "Не удалось создать ссылку");
+  return String(data);
+}
+
+export async function disableBriefShare(briefId) {
+  const sb = await getSupabase();
+  if (!sb) throw new Error("Облако не настроено");
+  const { error } = await sb.rpc("disable_brief_share", { p_brief_id: briefId });
+  if (error) throw new Error(error.message || "Не удалось отключить ссылку");
+}
+
+export function shareFillUrl(token) {
+  const base = `${location.origin}${location.pathname}`.replace(/\/$/, "/");
+  return `${base}#/s/${token}`;
+}
+
 export async function touchBrief(id) {
   if (await useLocal()) return localApi.touchBrief(id);
   const sb = await getSupabase();
@@ -388,6 +474,7 @@ export async function touchBrief(id) {
 }
 
 export async function loadAnswers(briefId) {
+  if (shareToken && sharedPack?.brief?.id === briefId) return { ...(sharedPack.answers || {}) };
   if (await useLocal()) return localApi.loadAnswers(briefId);
   const sb = await getSupabase();
   const { data, error } = await sb.from("answers").select("*").eq("brief_id", briefId);
@@ -398,6 +485,19 @@ export async function loadAnswers(briefId) {
 }
 
 export async function upsertAnswer(briefId, questionId, payload) {
+  if (shareToken) {
+    const sb = await getSupabase();
+    const { error } = await sb.rpc("upsert_shared_answer", {
+      p_token: shareToken,
+      p_question_id: questionId,
+      p_payload: payload,
+    });
+    if (error) throw error;
+    if (sharedPack) {
+      sharedPack.answers = { ...sharedPack.answers, [questionId]: payload };
+    }
+    return;
+  }
   if (await useLocal()) return localApi.upsertAnswer(briefId, questionId, payload);
   const sb = await getSupabase();
   const { error } = await sb.from("answers").upsert(
@@ -414,6 +514,7 @@ export async function upsertAnswer(briefId, questionId, payload) {
 }
 
 export async function loadSectionNotes(briefId) {
+  if (shareToken && sharedPack?.brief?.id === briefId) return { ...(sharedPack.notes || {}) };
   if (await useLocal()) return localApi.loadSectionNotes(briefId);
   const sb = await getSupabase();
   const { data, error } = await sb.from("section_notes").select("*").eq("brief_id", briefId);
@@ -424,6 +525,17 @@ export async function loadSectionNotes(briefId) {
 }
 
 export async function upsertSectionNote(briefId, sectionId, note) {
+  if (shareToken) {
+    const sb = await getSupabase();
+    const { error } = await sb.rpc("upsert_shared_note", {
+      p_token: shareToken,
+      p_section_id: sectionId,
+      p_note: note,
+    });
+    if (error) throw error;
+    if (sharedPack) sharedPack.notes = { ...sharedPack.notes, [sectionId]: note };
+    return;
+  }
   if (await useLocal()) return localApi.upsertSectionNote(briefId, sectionId, note);
   const sb = await getSupabase();
   const { error } = await sb.from("section_notes").upsert(
@@ -439,6 +551,13 @@ export async function upsertSectionNote(briefId, sectionId, note) {
 }
 
 export async function loadRefs(briefId, sectionId = null) {
+  if (shareToken && sharedPack?.brief?.id === briefId) {
+    const all = sharedPack.refs || [];
+    if (sectionId === "*") return [...all];
+    if (sectionId === null) return all.filter((r) => !r.section_id);
+    if (sectionId) return all.filter((r) => r.section_id === sectionId);
+    return [...all];
+  }
   if (await useLocal()) return localApi.loadRefs(briefId, sectionId);
   const sb = await getSupabase();
   let q = sb.from("refs").select("*").eq("brief_id", briefId).order("created_at");
@@ -455,6 +574,20 @@ export async function loadRefs(briefId, sectionId = null) {
 }
 
 export async function addRef(row) {
+  if (shareToken) {
+    const sb = await getSupabase();
+    const { data, error } = await sb.rpc("add_shared_ref", {
+      p_token: shareToken,
+      p_section_id: row.section_id || "",
+      p_kind: row.kind,
+      p_url: row.url,
+      p_thumb_url: row.thumb_url || "",
+      p_title: row.title || "",
+    });
+    if (error) throw error;
+    if (sharedPack) sharedPack.refs = [...(sharedPack.refs || []), data];
+    return data;
+  }
   if (await useLocal()) return localApi.addRef(row);
   const sb = await getSupabase();
   const { data, error } = await sb.from("refs").insert(row).select().single();
@@ -464,6 +597,16 @@ export async function addRef(row) {
 }
 
 export async function deleteRef(id) {
+  if (shareToken) {
+    const sb = await getSupabase();
+    const { error } = await sb.rpc("delete_shared_ref", {
+      p_token: shareToken,
+      p_ref_id: id,
+    });
+    if (error) throw error;
+    if (sharedPack) sharedPack.refs = (sharedPack.refs || []).filter((r) => r.id !== id);
+    return;
+  }
   if (await useLocal()) return localApi.deleteRef(id);
   const sb = await getSupabase();
   const { error } = await sb.from("refs").delete().eq("id", id);

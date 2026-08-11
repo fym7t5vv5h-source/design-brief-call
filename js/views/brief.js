@@ -91,7 +91,7 @@ function buildMarkdown(brief, allSections, answers, notes, refs = []) {
   return lines.join("\n");
 }
 
-export async function renderBrief(root, { brief }) {
+export async function renderBrief(root, { brief, guest = false }) {
   wireLightboxOnce();
   const allSections = sectionsFor(brief.type);
   let sectionIndex = 0;
@@ -157,23 +157,27 @@ export async function renderBrief(root, { brief }) {
   const briefSubtitle = objectLabel ? `${objectLabel} · ${typeLabel}` : typeLabel;
 
   root.innerHTML = `
-    <div class="app brief-app">
+    <div class="app brief-app${guest ? " guest-brief" : ""}">
       <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-top">
           <div class="brand">
-            <button type="button" class="brand-link" id="backProject">${escapeHtml(projectTitle || "Brief Design")}</button>
+            <button type="button" class="brand-link" id="backProject">${escapeHtml(guest ? "Brief Design" : projectTitle || "Brief Design")}</button>
             <p class="brand-sub">${escapeHtml(briefSubtitle)}</p>
           </div>
           <button type="button" class="btn ghost sidebar-close" id="sidebarClose" aria-label="Закрыть">×</button>
         </div>
-        <p class="sidebar-client">${escapeHtml(clientName)}</p>
+        <p class="sidebar-client">${escapeHtml(guest ? "Анкета клиента" : clientName)}</p>
+        ${guest ? `<p class="guest-save-hint">Ответы сохраняются сами — можно закрыть и вернуться по той же ссылке.</p>` : ""}
         <div class="progress-block">
           <div class="progress-top"><span>Прогресс</span><span id="progressLabel">0%</span></div>
           <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
         </div>
         <nav class="section-nav" id="sectionNav"></nav>
-        <div class="sidebar-actions">
+        ${
+          guest
+            ? ""
+            : `<div class="sidebar-actions">
           <button type="button" class="btn ghost" id="exportBtn">Экспорт</button>
           <div class="more-wrap">
             <button type="button" class="btn ghost" id="moreBtn" aria-expanded="false">⋯</button>
@@ -181,13 +185,14 @@ export async function renderBrief(root, { brief }) {
               <button type="button" class="danger-item" id="resetBrief">Очистить ответы брифа…</button>
             </div>
           </div>
-        </div>
+        </div>`
+        }
       </aside>
 
       <main class="main">
         <header class="topbar">
           <button type="button" class="btn ghost menu-btn" id="menuBtn" aria-label="Меню">☰</button>
-          <button type="button" class="btn ghost back-top" id="backProjectTop" title="К объекту">← Назад</button>
+          ${guest ? "" : `<button type="button" class="btn ghost back-top" id="backProjectTop" title="К объекту">← Назад</button>`}
           <div class="topbar-copy">
             <p class="eyebrow" id="sectionEyebrow"></p>
             <h1 id="sectionTitle"></h1>
@@ -416,7 +421,7 @@ export async function renderBrief(root, { brief }) {
 
     const atStart = sectionIndex === 0;
     const atEnd = sectionIndex === list.length - 1;
-    const nextLabel = atEnd ? "Экспорт" : "Далее →";
+    const nextLabel = atEnd ? (guest ? "Готово" : "Экспорт") : "Далее →";
     [els.prevBtn, els.prevBtnMobile].forEach((b) => {
       b.disabled = atStart;
     });
@@ -666,9 +671,21 @@ export async function renderBrief(root, { brief }) {
   }
 
   function goBackToProject() {
+    if (guest) {
+      setMenu(false);
+      return;
+    }
     const projectId = brief.project_id || brief.projects?.id;
     if (projectId) navigate(`/project/${projectId}`);
     else navigate("/");
+  }
+
+  function onLastSection() {
+    if (guest) {
+      alert("Спасибо! Ответы уже у дизайнера в облаке. Можно закрыть вкладку или дополнить позже по той же ссылке.");
+      return;
+    }
+    openExport();
   }
 
   root.querySelector("#backProject").addEventListener("click", goBackToProject);
@@ -687,7 +704,7 @@ export async function renderBrief(root, { brief }) {
     if (sectionIndex < getSections().length - 1) {
       sectionIndex += 1;
       paint();
-    } else openExport();
+    } else onLastSection();
   });
   root.querySelector("#prevBtnMobile").addEventListener("click", () => {
     if (sectionIndex > 0) {
@@ -699,16 +716,16 @@ export async function renderBrief(root, { brief }) {
     if (sectionIndex < getSections().length - 1) {
       sectionIndex += 1;
       paint();
-    } else openExport();
+    } else onLastSection();
   });
   els.sectionNotes.addEventListener("input", () => saveNote(current().id, els.sectionNotes.value));
 
-  root.querySelector("#exportBtn").addEventListener("click", openExport);
-  root.querySelector("#moreBtn").addEventListener("click", () => {
+  root.querySelector("#exportBtn")?.addEventListener("click", openExport);
+  root.querySelector("#moreBtn")?.addEventListener("click", () => {
     const menu = root.querySelector("#moreMenu");
-    menu.hidden = !menu.hidden;
+    if (menu) menu.hidden = !menu.hidden;
   });
-  root.querySelector("#resetBrief").addEventListener("click", async () => {
+  root.querySelector("#resetBrief")?.addEventListener("click", async () => {
     if (!confirm("Очистить все ответы этого брифа? Референсы останутся.")) return;
     await clearBriefAnswers(brief.id);
     answers = {};

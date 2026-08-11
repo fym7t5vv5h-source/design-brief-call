@@ -1,5 +1,5 @@
 /**
- * Tiny hash router: #/, #/login, #/client/:id, #/project/:id, #/brief/:id
+ * Tiny hash router: #/, #/login, #/client/:id, #/project/:id, #/brief/:id, #/s/:token
  */
 
 /** @typedef {{ name: string, params: Record<string, string> }} Route */
@@ -19,6 +19,7 @@ export function parseHash() {
   if (parts.length === 0) return { name: "home", params: {} };
   if (parts[0] === "login") return { name: "login", params: {} };
   if (parts[0] === "setup") return { name: "setup", params: {} };
+  if (parts[0] === "s" && parts[1]) return { name: "share", params: { token: parts[1] } };
   if (parts[0] === "client" && parts[1]) return { name: "client", params: { id: parts[1] } };
   if (parts[0] === "project" && parts[1]) return { name: "project", params: { id: parts[1] } };
   if (parts[0] === "brief" && parts[1]) return { name: "brief", params: { id: parts[1] } };

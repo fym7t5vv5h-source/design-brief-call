@@ -14,6 +14,11 @@ import {
   getBrief,
   migrateLocalToCloud,
   localClientCount,
+  loadSharedBrief,
+  clearShareToken,
+  enableBriefShare,
+  disableBriefShare,
+  shareFillUrl,
 } from "./store.js";
 import { onRoute, startRouter, navigate } from "./router.js";
 import { renderLogin, renderHome, openCreateBriefDialog } from "./views/hub.js";
@@ -97,8 +102,54 @@ async function createNewBriefFlow() {
   navigate(`/project/${project.id}`);
 }
 
+async function copyShareLink(briefId) {
+  try {
+    const token = await enableBriefShare(briefId);
+    const url = shareFillUrl(token);
+    await navigator.clipboard.writeText(url);
+    alert(`Ссылка скопирована.\n\nОтправьте клиенту — заполняет без пароля, ответы приходят к вам:\n${url}`);
+  } catch (err) {
+    const msg = String(err.message || err);
+    if (/function|schema cache|does not exist|404/i.test(msg)) {
+      alert(
+        "Сначала один раз в Supabase → SQL Editor выполните файл sql/share-links.sql (Run), затем снова нажмите «Ссылка клиенту»."
+      );
+      return;
+    }
+    alert(msg || "Не удалось создать ссылку");
+  }
+}
+
+async function handleShareRoute(token) {
+  if (!isConfigured()) {
+    root.innerHTML = `<div class="hub-shell"><p class="form-error">Облако не настроено.</p></div>`;
+    return;
+  }
+  loading("Открываем анкету…");
+  try {
+    const pack = await loadSharedBrief(token);
+    await renderBrief(root, { brief: pack.brief, guest: true });
+  } catch (err) {
+    clearShareToken();
+    root.innerHTML = `<div class="hub-shell narrow">
+      <header class="hub-hero">
+        <p class="brand-mark">Brief Design</p>
+        <h1>Ссылка недоступна</h1>
+        <p class="hub-lead">${err.message || "Попросите дизайнера прислать новую ссылку."}</p>
+      </header>
+    </div>`;
+  }
+}
+
 async function handleRoute(route) {
   wireLightboxOnce();
+
+  if (route.name === "share") {
+    await handleShareRoute(route.params.token);
+    return;
+  }
+
+  clearShareToken();
 
   if (route.name === "setup") {
     navigate("/login");
@@ -131,7 +182,6 @@ async function handleRoute(route) {
           paintLogin();
         },
       });
-      // show who is logged in
       const email = session.user?.email || "";
       const hint = root.querySelector(".hub-hint");
       if (hint && email) {
@@ -174,6 +224,16 @@ async function handleRoute(route) {
             await paintProject();
           },
           onOpenBrief: (id) => navigate(`/brief/${id}`),
+          onShareBrief: (id) => copyShareLink(id),
+          onDisableShare: async (id) => {
+            if (!confirm("Отключить ссылку для клиента? Старая ссылка перестанет работать.")) return;
+            try {
+              await disableBriefShare(id);
+              await paintProject();
+            } catch (err) {
+              alert(err.message || err);
+            }
+          },
         });
       };
       await paintProject();
@@ -183,7 +243,7 @@ async function handleRoute(route) {
     if (route.name === "brief") {
       loading("Открываем бриф…");
       const brief = await getBrief(route.params.id);
-      await renderBrief(root, { brief });
+      await renderBrief(root, { brief, guest: false });
       return;
     }
 

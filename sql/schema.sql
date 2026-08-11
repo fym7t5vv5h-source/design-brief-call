@@ -177,3 +177,5 @@ create policy "Authenticated delete brief images"
 create policy "Public read brief images"
   on storage.objects for select to anon
   using (bucket_id = 'brief-images');
+
+-- Optional: client fill links without login — also run sql/share-links.sql
