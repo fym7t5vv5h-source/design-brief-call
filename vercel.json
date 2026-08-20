@@ -1,5 +1,12 @@
 {
   "rewrites": [
-    { "source": "/s/:token", "destination": "/index.html" }
+    {
+      "source": "/sb/:path*",
+      "destination": "https://vzxelhojewcbtsdzjypf.supabase.co/:path*"
+    },
+    {
+      "source": "/s/:token",
+      "destination": "/index.html"
+    }
   ]
 }
